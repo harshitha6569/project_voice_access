@@ -3,40 +3,33 @@ from groq import Groq
 import speech_recognition as sr
 import tempfile
 from gtts import gTTS
-from audiorecorder import audiorecorder
 
-# Page setup
 st.set_page_config(page_title="Helper Voice AI", layout="wide")
 
 st.title("🤖 Helper – Voice Assistant")
-st.write("🎤 Click and speak your question")
+st.write("🎤 Ask your question by voice")
 
-# API
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 recognizer = sr.Recognizer()
 
-# 🎤 Voice Recorder (THIS IS WHAT YOU NEED)
-audio = audiorecorder("🎤 Click to record", "⏹️ Recording... Click to stop")
+# 🎤 BUILT-IN VOICE INPUT (NO ERRORS)
+audio_file = st.audio_input("Speak now")
 
-if len(audio) > 0:
-    st.success("✅ Voice recorded")
-
-    # Save audio
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        audio.export(tmp.name, format="wav")
-        file_path = tmp.name
-
+if audio_file is not None:
     try:
+        # Save audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp.write(audio_file.read())
+            file_path = tmp.name
+
         # Convert speech → text
         with sr.AudioFile(file_path) as source:
-            recorded_audio = recognizer.record(source)
+            audio = recognizer.record(source)
 
-        query = recognizer.recognize_google(recorded_audio)
+        query = recognizer.recognize_google(audio)
+        st.success(f"🗣️ You asked: {query}")
 
-        st.subheader("🗣️ You asked:")
-        st.write(query)
-
-        # AI Response
+        # AI response
         with st.spinner("Helper is thinking..."):
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -44,11 +37,10 @@ if len(audio) > 0:
             )
 
             answer = response.choices[0].message.content
+            st.subheader("💡 Answer")
+            st.write(answer)
 
-        st.subheader("💡 Answer:")
-        st.write(answer)
-
-        # Convert to voice
+        # Text → voice
         tts = gTTS(answer)
         tts.save("response.mp3")
 
@@ -59,4 +51,4 @@ if len(audio) > 0:
         st.error(f"Error: {e}")
 
 else:
-    st.info("Click the button and speak your question")
+    st.info("Click the mic and ask your question")
