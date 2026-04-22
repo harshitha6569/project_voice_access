@@ -3,68 +3,60 @@ from groq import Groq
 import speech_recognition as sr
 import tempfile
 from gtts import gTTS
-import os
+from audiorecorder import audiorecorder
 
-# Page config
+# Page setup
 st.set_page_config(page_title="Helper Voice AI", layout="wide")
 
-st.title("🤖 Helper – Voice Assistant with Audio Output")
+st.title("🤖 Helper – Voice Assistant")
+st.write("🎤 Click and speak your question")
 
 # API
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 recognizer = sr.Recognizer()
 
-st.write("Upload your voice question and get both text + voice answer")
+# 🎤 Voice Recorder (THIS IS WHAT YOU NEED)
+audio = audiorecorder("🎤 Click to record", "⏹️ Recording... Click to stop")
 
-# Upload audio
-uploaded_file = st.file_uploader("🎧 Upload your voice", type=["wav", "mp3"])
+if len(audio) > 0:
+    st.success("✅ Voice recorded")
 
-if uploaded_file is not None:
+    # Save audio
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        audio.export(tmp.name, format="wav")
+        file_path = tmp.name
+
     try:
-        # Save input audio
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(uploaded_file.read())
-            input_path = tmp.name
+        # Convert speech → text
+        with sr.AudioFile(file_path) as source:
+            recorded_audio = recognizer.record(source)
 
-        # Speech to text
-        with sr.AudioFile(input_path) as source:
-            audio = recognizer.record(source)
+        query = recognizer.recognize_google(recorded_audio)
 
-        query = recognizer.recognize_google(audio)
-        st.success(f"🗣️ You asked: {query}")
+        st.subheader("🗣️ You asked:")
+        st.write(query)
 
-        # Generate AI response
+        # AI Response
         with st.spinner("Helper is thinking..."):
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": f"Answer clearly: {query}"}]
+                messages=[{"role": "user", "content": query}]
             )
 
             answer = response.choices[0].message.content
-            st.subheader("💡 Answer (Text)")
-            st.write(answer)
 
-        # Convert text → speech
+        st.subheader("💡 Answer:")
+        st.write(answer)
+
+        # Convert to voice
         tts = gTTS(answer)
-        
-        output_audio_path = "response.mp3"
-        tts.save(output_audio_path)
+        tts.save("response.mp3")
 
-        # Play audio
-        st.subheader("🔊 Voice Output")
-        audio_file = open(output_audio_path, "rb")
-        st.audio(audio_file.read(), format="audio/mp3")
-
-        # Download audio
-        st.download_button(
-            label="⬇️ Download Voice Answer",
-            data=open(output_audio_path, "rb").read(),
-            file_name="helper_voice.mp3",
-            mime="audio/mp3"
-        )
+        st.subheader("🔊 Voice Answer")
+        st.audio("response.mp3")
 
     except Exception as e:
         st.error(f"Error: {e}")
 
 else:
-    st.info("Upload a voice file to ask something")
+    st.info("Click the button and speak your question")
