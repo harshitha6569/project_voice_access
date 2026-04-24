@@ -1,4 +1,4 @@
 streamlit
 groq
-SpeechRecognition
-gTTS
+gtts
+openai>=1.0.0
