@@ -1,8 +1,8 @@
 import streamlit as st
 from groq import Groq
-import speech_recognition as sr
 import tempfile
 from gtts import gTTS
+from openai import OpenAI   # ✅ added
 
 # Page config
 st.set_page_config(page_title="Helper Voice AI", layout="wide")
@@ -10,16 +10,20 @@ st.set_page_config(page_title="Helper Voice AI", layout="wide")
 st.title("🤖 Helper – Voice Assistant")
 st.write("🎤 Click the mic and ask your question")
 
-# Check API key
+# Check API keys
 if "GROQ_API_KEY" not in st.secrets:
-    st.error("❌ GROQ API Key not found. Add it in Streamlit Secrets.")
+    st.error("❌ GROQ API Key not found.")
+    st.stop()
+
+if "OPENAI_API_KEY" not in st.secrets:   # ✅ added
+    st.error("❌ OPENAI API Key not found.")
     st.stop()
 
 # Initialize
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-recognizer = sr.Recognizer()
+whisper_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])  # ✅ added
 
-# 🎤 Built-in mic input (Streamlit)
+# 🎤 Mic input
 audio_file = st.audio_input("Speak now")
 
 if audio_file is not None:
@@ -29,11 +33,14 @@ if audio_file is not None:
             tmp.write(audio_file.read())
             file_path = tmp.name
 
-        # Convert speech to text
-        with sr.AudioFile(file_path) as source:
-            audio = recognizer.record(source)
+        # 🔥 REPLACED THIS PART (Speech → Text using Whisper)
+        with open(file_path, "rb") as audio:
+            transcript = whisper_client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=audio
+            )
 
-        query = recognizer.recognize_google(audio)
+        query = transcript.text
 
         st.subheader("🗣️ You asked:")
         st.write(query)
@@ -42,7 +49,13 @@ if audio_file is not None:
         with st.spinner("Helper is thinking..."):
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": query}]
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant. Understand technical words correctly and give clear answers."
+                    },
+                    {"role": "user", "content": query}
+                ]
             )
 
             answer = response.choices[0].message.content
@@ -50,10 +63,11 @@ if audio_file is not None:
         st.subheader("💡 Answer:")
         st.write(answer)
 
-        # Convert answer to voice
-        tts = gTTS(answer)
-        output_audio = "response.mp3"
-        tts.save(output_audio)
+        # Convert answer to voice (safe temp file)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio:
+            tts = gTTS(answer)
+            tts.save(tmp_audio.name)
+            output_audio = tmp_audio.name
 
         # Play audio
         st.subheader("🔊 Voice Answer:")
